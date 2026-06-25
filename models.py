@@ -14,6 +14,7 @@ class User(db.Model):
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     bookings = db.relationship("Booking", backref="user", lazy=True)
+    assigned_treks = db.relationship("Trek", backref="staff", lazy=True, foreign_keys="Trek.staff_id")
 
 
 class Trek(db.Model):

@@ -13,3 +13,11 @@ class Config:
     JWT_SECRET_KEY = "jwt-secret"
 
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
+
+    CACHE_TYPE = "RedisCache"
+    
+    CACHE_REDIS_HOST = "127.0.0.1"
+
+    CACHE_REDIS_PORT = 6379
+
+    CACHE_DEFAULT_TIMEOUT = 300

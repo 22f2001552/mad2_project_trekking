@@ -7,7 +7,7 @@ from werkzeug.security import check_password_hash
 from models import User
 from flask_jwt_extended import (JWTManager,create_access_token,jwt_required,get_jwt_identity)
 from datetime import datetime
-
+from cache import cache
 
 
 app = Flask(__name__)
@@ -15,6 +15,8 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 db.init_app(app)
+
+cache.init_app(app)
 
 jwt = JWTManager(app)
 
@@ -156,6 +158,7 @@ def create_trek():
 
 #view trekk---------------------------------------------------------------------------------------------------------------
 @app.route("/api/treks", methods=["GET"])
+@cache.cached(timeout=300)
 def get_treks():
 
     treks = Trek.query.all()
