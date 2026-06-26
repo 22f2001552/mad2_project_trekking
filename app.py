@@ -8,6 +8,9 @@ from models import User
 from flask_jwt_extended import (JWTManager,create_access_token,jwt_required,get_jwt_identity)
 from datetime import datetime
 from cache import cache
+import csv
+from flask import send_file
+from tasks import export_booking_csv
 
 
 app = Flask(__name__)
@@ -547,6 +550,18 @@ def update_profile():
     db.session.commit()
 
     return {"message": "Profile updated successfully"}
+
+
+
+#exporint booking data to csv file------------------------------------------------------------------------------------
+
+@app.route("/api/export/bookings", methods=["GET"])
+@jwt_required()
+def export_bookings():
+    user_id = int(get_jwt_identity())
+    task = export_booking_csv.delay(user_id)
+
+    return jsonify({"message": "CSV export started", "task_id": task.id})
     
 #----------------------------------------------------------------------------------------------------------------------
 
