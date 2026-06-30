@@ -11,9 +11,11 @@ from cache import cache
 import csv
 from flask import send_file
 from tasks import export_booking_csv
+from flask_cors import CORS
 
 
 app = Flask(__name__)
+CORS(app)
 
 app.config.from_object(Config)
 
@@ -177,7 +179,9 @@ def get_treks():
             "difficulty": trek.difficulty,
             "slots": trek.available_slots,
             "status": trek.status,
-            "staff_id": trek.staff_id 
+            "staff_id": trek.staff_id,
+            "start_date": trek.start_date,
+            "end_date": trek.end_date
         })
     return result
 
@@ -214,6 +218,23 @@ def book_trek():
     db.session.commit()
 
     return {"message": "Booking successful"}
+
+
+#cancle bookings__________________________________________________________________________________________________________________
+@app.route("/api/bookings/<int:booking_id>", methods=["DELETE"])
+@jwt_required()
+def cancel_booking(booking_id):
+    user_id = int(get_jwt_identity())
+    booking = Booking.query.get(booking_id)
+    if not booking:
+        return {"message": "Booking not found"}, 404
+    if booking.user_id != user_id:
+        return {"message": "Unauthorized"}, 403
+    trek = Trek.query.get(booking.trek_id)
+    trek.available_slots += 1
+    db.session.delete(booking)
+    db.session.commit()
+    return {"message": "Booking cancelled successfully"}
 
 
 #users view booking route_____________________________________________________________________________________________________
