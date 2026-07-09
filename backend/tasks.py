@@ -1,7 +1,7 @@
 import csv
-from celery_app import celery
-from celery_utils import create_app
-from models import Booking, Trek, User
+from backend.celery_app import celery
+from backend.celery_utils import create_app
+from backend.models import Booking, Trek, User
 from datetime import date
 
 
@@ -10,39 +10,32 @@ from datetime import date
 @celery.task
 def export_booking_csv(user_id):
     app = create_app()
-
     with app.app_context():
-
-        bookings = Booking.query.filter_by(
-            user_id=user_id
-        ).all()
-
-        filename = f"booking_history_{user_id}.csv"
-
+        bookings = Booking.query.all()
+        filename = "all_bookings.csv"
         with open(filename, "w", newline="") as file:
-
             writer = csv.writer(file)
-
             writer.writerow([
                 "Booking ID",
+                "User",
                 "Trek Name",
                 "Location",
                 "Booking Date",
                 "Status"
-            ])
-
+                ])
+            
             for booking in bookings:
-
                 trek = Trek.query.get(booking.trek_id)
-
+                user = User.query.get(booking.user_id)
                 writer.writerow([
                     booking.id,
+                    user.name,
                     trek.name,
                     trek.location,
                     booking.booking_date,
                     booking.status
                 ])
-
+                
         return filename
     
 

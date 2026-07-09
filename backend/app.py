@@ -1,16 +1,16 @@
 from flask import Flask
-from config import Config
-from models import db, User,Trek,Booking
+from backend.config import Config
+from backend.models import db, User,Trek,Booking
 from flask import request, jsonify
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
-from models import User
+from backend.models import User
 from flask_jwt_extended import (JWTManager,create_access_token,jwt_required,get_jwt_identity)
 from datetime import datetime
-from cache import cache
+from backend.cache import cache
 import csv
 from flask import send_file
-from tasks import export_booking_csv
+from backend.tasks import export_booking_csv
 from flask_cors import CORS
 
 
@@ -25,9 +25,7 @@ cache.init_app(app)
 
 jwt = JWTManager(app)
 
-@app.route("/")
-def home():
-    return "Trekking Management API Running!"
+
 
 
 
@@ -109,6 +107,12 @@ def create_staff():
     if admin.role != "admin":
         return {"message": "Unauthorized"}, 403
     data = request.get_json()
+    if not data["name"].strip():
+        return {"message": "Name is required"}, 400
+    if not data["email"].strip():
+        return {"message": "Email is required"}, 400
+    if not data["password"].strip():
+        return {"message": "Password is required"}, 400
     existing = User.query.filter_by(email=data["email"]).first()
     if existing:
         return {"message": "Email already exists"}, 400
@@ -128,16 +132,11 @@ def create_staff():
 @app.route("/api/admin/treks", methods=["POST"])
 @jwt_required()
 def create_trek():
-
     current_user_id = get_jwt_identity()
-
     admin = User.query.get(current_user_id)
-
     if admin.role != "admin":
         return {"message": "Unauthorized"}, 403
-
     data = request.get_json()
-
     trek = Trek(
         name=data["name"],
         location=data["location"],
@@ -161,29 +160,37 @@ def create_trek():
 
     return {"message": "Trek created"}
 
+
+
 #view trekk---------------------------------------------------------------------------------------------------------------
 @app.route("/api/treks", methods=["GET"])
 @cache.cached(timeout=300)
 def get_treks():
-
     treks = Trek.query.all()
-
     result = []
-
     for trek in treks:
-
-        result.append({
-            "id": trek.id,
-            "name": trek.name,
-            "location": trek.location,
-            "difficulty": trek.difficulty,
-            "slots": trek.available_slots,
-            "status": trek.status,
-            "staff_id": trek.staff_id,
-            "start_date": trek.start_date,
-            "end_date": trek.end_date
-        })
+        staff_name = "Not Assigned"
+        if trek.staff_id:
+            staff = User.query.get(trek.staff_id)
+            if staff:
+                staff_name = staff.name
+            result.append({
+                "id": trek.id,
+                "name": trek.name,
+                "location": trek.location,
+                "difficulty": trek.difficulty,
+                "slots": trek.available_slots,
+                "status": trek.status,
+                "staff_id": trek.staff_id,
+                "staff_name": staff_name,
+                "start_date": trek.start_date,
+                "end_date": trek.end_date
+            })
     return result
+
+
+
+
 
 #book trekk_______________________________________________________________________________________________________________
 @app.route("/api/bookings", methods=["POST"])
@@ -263,14 +270,15 @@ def all_users():
     current_user = User.query.get(int(get_jwt_identity()))
     if current_user.role != "admin":
         return {"message": "Unauthorized"}, 403
-    users = User.query.all()
+    users = User.query.filter_by(role="user").all()
     result = []
     for user in users:
         result.append({
             "id": user.id,
             "name": user.name,
             "email": user.email,
-            "role": user.role
+            "role": user.role,
+            "active": user.active
         })
 
     return jsonify(result)
@@ -283,19 +291,51 @@ def all_staff():
     current_user = User.query.get(int(get_jwt_identity()))
     if current_user.role != "admin":
         return {"message": "Unauthorized"}, 403
-
     staff = User.query.filter_by(role="staff").all()
+    result = []
+    for s in staff:
+        assigned_trek = "Not Assigned"
+        trek = Trek.query.filter_by(staff_id=s.id).first()
+        if trek:
+            assigned_trek = trek.name
+        result.append({
+            "id": s.id,
+            "name": s.name,
+            "email": s.email,
+            "active": s.active,
+            "assigned_trek": assigned_trek
+        })
+
+    return jsonify(result)
+
+
+#active staff route---------------------------------------------------------------------------------------
+@app.route("/api/admin/active-staff")
+@jwt_required()
+def active_staff():
+
+    admin = User.query.get(int(get_jwt_identity()))
+
+    if admin.role != "admin":
+        return {"message": "Unauthorized"}, 403
+
+    staff = User.query.filter_by(
+        role="staff",
+        active=True
+    ).all()
 
     result = []
 
     for s in staff:
         result.append({
             "id": s.id,
-            "name": s.name,
-            "email": s.email
+            "name": s.name
         })
 
     return jsonify(result)
+
+
+
 
 #admin viewing all bookings___________________________________________________________________________________________
 @app.route("/api/admin/bookings",methods=["GET"])
@@ -320,6 +360,25 @@ def all_bookings():
         })
 
     return jsonify(result)
+
+
+#admin summery---------------------------------------------------------------------------------------------------
+@app.route("/api/admin/summary", methods=["GET"])
+@jwt_required()
+def admin_summary():
+    admin = User.query.get(int(get_jwt_identity()))
+    if admin.role != "admin":
+        return {"message": "Unauthorized"}, 403
+    total_users = User.query.filter_by(role="user").count()
+    total_staff = User.query.filter_by(role="staff").count()
+    total_treks = Trek.query.count()
+    total_bookings = Booking.query.count()
+    return jsonify({
+        "users": total_users,
+        "staff": total_staff,
+        "treks": total_treks,
+        "bookings": total_bookings
+    })
 
 
 
@@ -386,9 +445,31 @@ def assign_staff(trek_id):
         return {"message": "Staff not found"}, 404
     if staff.role != "staff":
         return{"message":"Selected user is not a staff member"},400
+    if not staff.active:
+        return {"message": "Cannot assign a deactivated staff member."}, 400
     trek.staff_id = staff.id
     db.session.commit()
     return{"message":"staff assign successful"}
+
+
+#admin unassigining staff to trek---------------------------------------------------------------------------------------
+@app.route("/api/admin/trek/<int:trek_id>/unassign", methods=["PUT"])
+@jwt_required()
+def unassign_staff(trek_id):
+
+    admin = User.query.get(int(get_jwt_identity()))
+
+    if admin.role != "admin":
+        return {"message":"Unauthorized"},403
+
+    trek = Trek.query.get(trek_id)
+    if not trek:
+        return {"message":"Trek not found"},404
+    trek.staff_id = None
+
+    db.session.commit()
+
+    return {"message":"Staff unassigned successfully"}
     
 
     
@@ -413,7 +494,10 @@ def staff_treks():
             "name": trek.name,
             "location": trek.location,
             "status": trek.status,
-            "slots": trek.available_slots
+            "slots": trek.available_slots,
+            "difficulty": trek.difficulty,
+            "start_date": trek.start_date.strftime("%a, %d %b %Y"),
+            "end_date": trek.end_date.strftime("%a, %d %b %Y")
         })
     return jsonify(result)
 
@@ -451,27 +535,18 @@ def view_participants(trek_id):
 @app.route("/api/staff/trek/<int:trek_id>",methods=["PUT"])
 @jwt_required()
 def update_trek_status(trek_id):
-
     current_user = User.query.get(int(get_jwt_identity()))
-
     if current_user.role != "staff":
         return {"message": "Unauthorized"}, 403
-
     trek = Trek.query.get(trek_id)
-
     if trek.staff_id != current_user.id:
         return {"message": "Not your trek"}, 403
-
     data = request.get_json()
-
     if "status" in data:
-        trek.status = data["status"]
-
+        trek.status = data["status"]    
     if "available_slots" in data:
         trek.available_slots = data["available_slots"]
-
     db.session.commit()
-
     return {"message": "Updated"}
 
 #updating the terk -----------------------------------------------------------------------------------------
@@ -505,7 +580,7 @@ def update_trek(trek_id):
 
 #deleting the trek______________________________________________________________________________________________________
 
-@app.route("/api/admin/treks/<int:trek_id>", methods=["DELETE"])
+@app.route("/api/admin/trek/<int:trek_id>", methods=["DELETE"])
 @jwt_required()
 def delete_trek(trek_id):
     admin = User.query.get(int(get_jwt_identity()))
@@ -514,15 +589,16 @@ def delete_trek(trek_id):
     trek = Trek.query.get(trek_id)
     if not trek:
         return {"message": "Trek not found"}, 404
-
     booking = Booking.query.filter_by(trek_id=trek.id).first()
-
     if booking:
-        return {"message": "Cannot delete trek because users have already booked it."}, 400
-
+        return {
+            "message": "Cannot delete trek. Bookings already exist."
+        }, 400
     db.session.delete(trek)
     db.session.commit()
-    return {"message": "Trek deleted successfully"}
+    return {
+        "message": "Trek deleted successfully."
+    }
 
 
 
@@ -583,7 +659,43 @@ def export_bookings():
     task = export_booking_csv.delay(user_id)
 
     return jsonify({"message": "CSV export started", "task_id": task.id})
-    
+
+
+
+#admin viewing trelks---------------------------------------------------------------------------------------------------------
+
+@app.route("/api/admin/treks", methods=["GET"])
+@jwt_required()
+def admin_treks():
+    admin = User.query.get(int(get_jwt_identity()))
+    if admin.role != "admin":
+        return {"message":"Unauthorized"},403
+
+    treks = Trek.query.all()
+    result = []
+    for trek in treks:
+        staff_name = "Not Assigned"
+        if trek.staff_id:
+            staff = User.query.get(trek.staff_id)
+            if staff:
+                staff_name = staff.name
+        result.append({
+
+            "id": trek.id,
+            "name": trek.name,
+            "location": trek.location,
+            "difficulty": trek.difficulty,
+            "slots": trek.available_slots,
+            "duration_days": trek.duration_days,
+            "status": trek.status,
+            "staff_id": trek.staff_id,
+            "staff_name": staff_name,
+            "start_date": trek.start_date.strftime("%Y-%m-%d"),
+            "end_date": trek.end_date.strftime("%Y-%m-%d")
+
+        })
+
+    return jsonify(result)
 #----------------------------------------------------------------------------------------------------------------------
 
 with app.app_context():
@@ -600,6 +712,9 @@ with app.app_context():
         db.session.add(admin)
         db.session.commit()
         print("Admin created")
+
+
+
 
 if __name__ == "__main__":
     app.run(debug=True)
