@@ -12,10 +12,15 @@ import csv
 from flask import send_file
 from backend.tasks import export_booking_csv
 from flask_cors import CORS
+import logging
 
 
 app = Flask(__name__)
-CORS(app)
+# enable CORS for API routes and allow the Authorization header used by JWT
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True, expose_headers=["Authorization"], allow_headers=["Content-Type", "Authorization"])
+
+# basic logging
+logging.basicConfig(level=logging.INFO)
 
 app.config.from_object(Config)
 
@@ -366,7 +371,10 @@ def all_bookings():
 @app.route("/api/admin/summary", methods=["GET"])
 @jwt_required()
 def admin_summary():
-    admin = User.query.get(int(get_jwt_identity()))
+    identity = get_jwt_identity()
+    logging.info(f"admin_summary called by identity={identity}")
+    admin = User.query.get(int(identity))
+    logging.info(f"resolved admin user: id={getattr(admin,'id',None)} role={getattr(admin,'role',None)}")
     if admin.role != "admin":
         return {"message": "Unauthorized"}, 403
     total_users = User.query.filter_by(role="user").count()

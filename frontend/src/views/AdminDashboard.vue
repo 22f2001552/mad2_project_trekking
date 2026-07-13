@@ -363,14 +363,18 @@
     </table>
 </div>
 <!--------viewstaff---------------------->
-<div v-if="showStaff" class="mt-4">
-    <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-outline-success" @click="showStaff = !showStaff; loadStaff()">
-        {{ showStaff ? "Hide Staff" : "View Staff" }}
-    </button>
-    </div>
 
-    <h3 class="mb-3"> All Staff </h3>
+<!-- VIEW STAFF BUTTON -->
+
+
+<div
+    v-if="showStaff"
+    class="mt-4"
+>
+
+    <h3 class="mb-3">
+        All Staff
+    </h3>
 
     <table class="table table-bordered table-hover">
 
@@ -386,37 +390,64 @@
 
                 <th>Status</th>
 
-                <th>Action</th> 
+                <th>Action</th>
 
             </tr>
 
         </thead>
 
+
         <tbody>
 
-            <tr v-for="staff in staffTable":key="staff.id">
-                <td>{{ staff.name }}</td>
+            <tr
+                v-for="staff in staffTable"
+                :key="staff.id"
+            >
 
-                <td>{{ staff.email }}</td>
+                <td>
+                    {{ staff.name }}
+                </td>
 
-                <td>{{ staff.assigned_trek }}</td>
+                <td>
+                    {{ staff.email }}
+                </td>
+
+                <td>
+                    {{ staff.assigned_trek || "Not Assigned" }}
+                </td>
 
                 <td>
 
-                    <span class="badge bg-success" v-if="staff.active">
+                    <span
+                        v-if="staff.active"
+                        class="badge bg-success"
+                    >
+
                         Active
+
                     </span>
 
-                    <span class="badge bg-danger" v-else >
+                    <span
+                        v-else
+                        class="badge bg-danger"
+                    >
+
                         Inactive
+
                     </span>
 
                 </td>
 
                 <td>
 
-                    <button class="btn btn-danger btn-sm" @click="deactivateStaff(staff.id)" :disabled="!staff.active">
+                    <button
+                        class="btn btn-danger btn-sm"
+                        @click="deactivateStaff(staff.id)"
+                        :disabled="!staff.active"
+                    >
+
                         Deactivate
+
                     </button>
 
                 </td>
@@ -428,6 +459,7 @@
     </table>
 
 </div>
+
 <hr>
 
 <!----------------ADMIN VIEW USERS--------------------------------------------------------------------->
@@ -648,9 +680,10 @@
 
 
 
-    <button class="btn btn-outline-success" @click="showStaff = !showStaff; loadStaff()">
+    <button class="btn btn-outline-success" @click=" showStaff = !showStaff; if(showStaff) loadStaffTable();">
         {{ showStaff ? "Hide Staff" : "View Staff" }}
     </button>
+
 
 
     <button class="btn btn-outline-warning" @click="showUsers = !showUsers; loadUsers()">
@@ -743,25 +776,56 @@ async function loadSummary() {
 
 }
 
+
+
 async function loadStaff(){
     try{
         const response = await api.get(
             "/admin/active-staff",
             {
                 headers:{
+
                     Authorization:
                     "Bearer " +
                     localStorage.getItem("token")
+
                 }
             }
         );
         staffList.value = response.data;
+    }
+    catch(error){
+        alert(
+            error.response?.data?.message ||
+            "Failed to load active staff"
+        );
+    }
+}
+
+async function loadStaffTable(){
+    try{
+        const response = await api.get(
+            "/admin/staff",
+            {
+                headers:{
+
+                    Authorization:
+                    "Bearer " +
+                    localStorage.getItem("token")
+
+                }
+            }
+        );
         staffTable.value = response.data;
     }
     catch(error){
-        alert(error.response.data.message);
+        alert(
+            error.response?.data?.message ||
+            "Failed to load staff"
+        );
     }
 }
+
 
 async function loadUsers(){
 
